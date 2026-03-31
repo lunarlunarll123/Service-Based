@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from redis import Redis
 import socket
+import requests
 
 app = Flask(__name__)
 
@@ -10,9 +11,9 @@ db = Redis(host="shop_db", port=6379, decode_responses=True)
 
 def seed_products_if_needed():
     if db.exists("sku:001") == 0:
-        db.hset("sku:001", mapping={"name": "iPhone 15 Pro", "stock": 10})
-        db.hset("sku:002", mapping={"name": "MacBook Air", "stock": 5})
-        db.hset("sku:003", mapping={"name": "Sony PS5", "stock": 20})
+        db.hset("sku:001", mapping={"name": "iPhone 15 Pro", "stock": 10, "price": 900})
+        db.hset("sku:002", mapping={"name": "MacBook Air", "stock": 5, "price": 1200})
+        db.hset("sku:003", mapping={"name": "Sony PS5", "stock": 20, "price": 500})
 
 
 @app.route("/")
@@ -46,12 +47,17 @@ def reduce_stock():
     current_stock = int(db.hget(sku, "stock"))
 
     if current_stock > 0:
+        response = requests.post("http://money_app:5000/reduce_balance", json={"amount": data["price"] * data["quantity"]})
+        money_data = response.json()
+        if not money_data["success"]:
+            return jsonify({"success": False, "message": money_data["message"]}), 400
         db.hincrby(sku, "stock", -1)
         new_stock = current_stock - 1
         return jsonify({
             "success": True,
             "product_name": db.hget(sku, "name"),
             "new_stock": new_stock,
+            "new_balance": money_data["new_balance"],
         })
     else:
         return jsonify({"success": False, "message": "Out of Stock"}), 400

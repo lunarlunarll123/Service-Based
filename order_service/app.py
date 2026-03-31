@@ -36,10 +36,25 @@ HTML_TEMPLATE = """
 
         <form method="POST" action="/order/submit">
             <h3>Select a Product:</h3>
-            <select name="sku" style="width: 100%;">
-                <option value="sku:001">iPhone 15 Pro</option>
-                <option value="sku:002">MacBook Air</option>
-                <option value="sku:003">Sony PS5</option>
+            <table>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Stock</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for key in ["sku:001", "sku:002", "sku:003"] %}
+            <tr>
+            <td>
+            <td><input type="checkbox" name="sku" value="{{ key }}"></td>
+                <td>{{ db.hget(key, "name") }}</td>
+                <td>{{ db.hget(key, "stock") }}</td>
+                <td>${{ db.hget(key, "price") }}</td>
+            {% endfor %}
+            </tbody>
+            </table>
             </select>
             <br/><br/>
             <button type="submit" style="width: 100%;">Buy Now (Place Order)</button>
@@ -61,6 +76,19 @@ HTML_TEMPLATE = """
 """
 
 
+
+# Update Order Service to support phone price.
+# • Create a new Money Service for:
+# o initializing the balance
+# o checking the current balance
+# o deducting money after an order
+# • Update Order Service so that a successful order reduces the balance.
+# • Update docker-compose.yml to include the new service.
+# • Update Nginx routing if needed.
+# • Update the front-end page to show:
+# o phone prices
+# o current balance
+
 @app.route("/")
 def index():
     logs = db.lrange("order_history", 0, 4)
@@ -78,7 +106,7 @@ def submit_order():
 
         if response.status_code == 200 and data["success"]:
             order_id = db.incr("order_id_counter")
-            log_message = f"Order #{order_id}: {data['product_name']} (Stock left: {data['new_stock']})"
+            log_message = f"Order #{order_id}: {data['product_name']} (Stock left: {data['new_stock']}, Balance after purchase: {data['new_balance']})"
             db.lpush("order_history", log_message)
             return f"<h2>Order Successful!</h2><p>{log_message}</p><a href='/order/'>Back</a>"
         else:

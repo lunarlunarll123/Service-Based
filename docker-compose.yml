@@ -17,10 +17,20 @@ services:
     environment:
       - FLASK_ENV=development
 
+  money_app:
+    build: ./money_service
+    expose:
+      - "5000"
+    depends_on:
+      - shop_db
+    environment:
+      - FLASK_ENV=development
+
   shop_db:
     image: "redis:alpine"
     container_name: shop_shared_redis
     restart: always
+    platform: linux/amd64
 
   nginx:
     image: nginx:latest
