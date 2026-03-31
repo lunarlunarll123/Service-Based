@@ -1,4 +1,7 @@
 services:
+
+  # ── Application Services ────────────────────────────────────────────────
+
   product_app:
     build: ./product_service
     expose:
@@ -7,6 +10,9 @@ services:
       - shop_db
     environment:
       - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./product_service:/app   # hot-reload: file changes reflect immediately
 
   order_app:
     build: ./order_service
@@ -14,8 +20,13 @@ services:
       - "5000"
     depends_on:
       - shop_db
+      - money_app
+      - ollama
     environment:
       - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./order_service:/app     # hot-reload: file changes reflect immediately
 
   money_app:
     build: ./money_service
@@ -25,12 +36,46 @@ services:
       - shop_db
     environment:
       - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./money_service:/app     # hot-reload: file changes reflect immediately
+
+  # ── Shared Database ─────────────────────────────────────────────────────
 
   shop_db:
     image: "redis:alpine"
     container_name: shop_shared_redis
     restart: always
     platform: linux/amd64
+
+  # ── Local LLM (Ollama + TinyLlama) ──────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    expose:
+      - "11434"
+    volumes:
+      - ollama_data:/root/.ollama   # persist downloaded models across restarts
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  # One-shot container: waits for Ollama to be healthy, then pulls tinyllama
+  ollama_model_init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["ollama", "pull", "llama3.2:1b"]
+    restart: "no"
+
+  # ── API Gateway ─────────────────────────────────────────────────────────
 
   nginx:
     image: nginx:latest
@@ -41,3 +86,7 @@ services:
     depends_on:
       - product_app
       - order_app
+      - money_app
+
+volumes:
+  ollama_data:

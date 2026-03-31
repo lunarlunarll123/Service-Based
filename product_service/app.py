@@ -40,28 +40,40 @@ def reduce_stock():
 
     data = request.get_json()
     sku = data.get("sku")
+    quantity = data.get("quantity", 1)
 
     if not db.exists(sku):
         return jsonify({"success": False, "message": "Product not found"}), 404
 
     current_stock = int(db.hget(sku, "stock"))
 
-    if current_stock > 0:
-        response = requests.post("http://money_app:5000/reduce_balance", json={"amount": data["price"] * data["quantity"]})
-        money_data = response.json()
-        if not money_data["success"]:
-            return jsonify({"success": False, "message": money_data["message"]}), 400
-        db.hincrby(sku, "stock", -1)
-        new_stock = current_stock - 1
-        return jsonify({
-            "success": True,
-            "product_name": db.hget(sku, "name"),
-            "new_stock": new_stock,
-            "new_balance": money_data["new_balance"],
-        })
-    else:
+    if current_stock <= 0:
         return jsonify({"success": False, "message": "Out of Stock"}), 400
+
+    # Read price from Redis — never trust client-supplied price
+    price = int(db.hget(sku, "price"))
+    total_cost = price * quantity
+
+    response = requests.post(
+        "http://money_app:5000/reduce_balance",
+        json={"amount": total_cost}
+    )
+    money_data = response.json()
+
+    if not money_data["success"]:
+        return jsonify({"success": False, "message": money_data["message"]}), 400
+
+    db.hincrby(sku, "stock", -quantity)
+    new_stock = current_stock - quantity
+
+    return jsonify({
+        "success": True,
+        "product_name": db.hget(sku, "name"),
+        "new_stock": new_stock,
+        "price_paid": total_cost,
+        "new_balance": money_data["new_balance"],
+    })
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
